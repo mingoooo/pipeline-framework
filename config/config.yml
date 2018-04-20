@@ -9,3 +9,5 @@ workers:
       name: pass
     output:
       name: echo
+      kwargs:
+        prefix: Hello, 
