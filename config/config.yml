@@ -1,0 +1,11 @@
+log:
+  log_path: test.log
+  log_level: debug
+
+workers:
+  - input:
+      name: faker
+    handle:
+      name: pass
+    output:
+      name: echo
