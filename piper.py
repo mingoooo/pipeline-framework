@@ -5,6 +5,12 @@ from outputs import load_output
 from worker import Worker
 from config import config
 import time
+import sys
+import signal
+from util.log import get_logger
+
+logger = get_logger(
+    name='main', level=config.get('log', {}).get('log_level', 'info'), log_path=config.get('log', {}).get('log_path'))
 
 
 def _create_worker_process(input_, handle, output, interval=.2):
@@ -17,13 +23,17 @@ def _start_piper(*worker_confs):
         _create_worker_process(
             load_input(conf['input']['name'], **conf['input'].get('kwargs', {})),
             load_handle(conf['handle']['name'], **conf['handle'].get('kwargs', {})),
-            load_output(conf['output']['name'], **conf['output'].get('kwargs', {})))
-        for conf in worker_confs
+            load_output(conf['output']['name'], **conf['output'].get('kwargs', {}))) for conf in worker_confs
     ]
 
     for w in worker_pool:
         w.start()
     return worker_pool
+
+
+def _clear_pool(pool):
+    for p in pool:
+        p.terminate()
 
 
 def main():
@@ -36,19 +46,29 @@ def main():
     is_alive = False
     worker_pool = []
 
+    def _team_handler(*args):
+        _clear_pool(worker_pool)
+        logger.warning('Killed')
+        sys.exit(1)
+
     while True:
-        if not is_alive:
+        try:
+            signal.signal(signal.SIGTERM, _team_handler)
+            if not is_alive:
+                _clear_pool(worker_pool)
+                worker_pool = _start_piper(*worker_confs)
+                is_alive = True
+
             for p in worker_pool:
-                p.terminate()
-            worker_pool = _start_piper(*worker_confs)
-            is_alive = True
+                if not p.is_alive():
+                    is_alive = False
+                    break
 
-        for p in worker_pool:
-            if not p.is_alive():
-                is_alive = False
-                break
-
-        time.sleep(.1)
+            time.sleep(.1)
+        except (KeyboardInterrupt, SystemExit):
+            _clear_pool(worker_pool)
+            logger.info('Shutdown')
+            sys.exit(1)
 
 
 if __name__ == '__main__':
